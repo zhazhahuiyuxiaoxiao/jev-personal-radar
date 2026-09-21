@@ -1,0 +1,44 @@
+name: Personal radar
+
+on:
+  schedule:
+    # 01:17 UTC = 09:17 Asia/Shanghai. GitHub may delay scheduled jobs.
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: personal-radar-daily
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout private runtime config
+        uses: actions/checkout@v5
+        with:
+          path: runtime
+          persist-credentials: false
+      - name: Checkout reviewed public radar code
+        uses: actions/checkout@v5
+        with:
+          repository: YOUR_GITHUB_USER/jev-personal-radar
+          ref: PIN_PUBLIC_COMMIT_SHA
+          path: radar-code
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: radar-code/go.mod
+          cache: false
+      - name: Create private digest
+        working-directory: radar-code
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: go run ./cmd/radar -config ../runtime/config.json

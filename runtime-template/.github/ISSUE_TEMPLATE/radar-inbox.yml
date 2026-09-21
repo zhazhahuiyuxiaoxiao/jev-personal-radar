@@ -1,0 +1,28 @@
+name: Radar inbox
+description: 手动保存小红书或其他网页链接，等待纳入私有日报
+title: "[Radar Inbox] "
+labels: ["radar-inbox"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL
+      description: 只填写公开可访问的 HTTP(S) 原文链接；程序不会抓取正文。
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - work
+        - life
+    validations:
+      required: true
+  - type: textarea
+    id: note
+    attributes:
+      label: My note
+      description: 你的私人备注；不会发送给 Jev。
+    validations:
+      required: false

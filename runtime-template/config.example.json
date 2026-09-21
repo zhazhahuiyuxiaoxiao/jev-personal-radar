@@ -1,0 +1,22 @@
+{
+  "topics": {
+    "work": {
+      "keywords": ["Go", "backend", "developer", "Codex"],
+      "github_queries": [
+        "go backend in:name,description,readme",
+        "developer productivity in:name,description,readme"
+      ]
+    },
+    "life": {
+      "keywords": ["learning", "productivity", "knowledge"],
+      "github_queries": [
+        "learning productivity in:name,description,readme"
+      ]
+    }
+  },
+  "feeds": [
+    {"name": "Go Blog", "url": "https://go.dev/blog/feed.atom", "category": "work"},
+    {"name": "GitHub Changelog", "url": "https://github.blog/changelog/feed/", "category": "work"},
+    {"name": "Ness Labs", "url": "https://nesslabs.com/feed", "category": "life"}
+  ]
+}
