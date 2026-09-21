@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Item struct {
@@ -72,7 +74,7 @@ func keywordScore(item Item, keywords []string) (float64, string) {
 	var hits []string
 	for _, keyword := range keywords {
 		keyword = strings.TrimSpace(keyword)
-		if keyword != "" && strings.Contains(haystack, strings.ToLower(keyword)) {
+		if keyword != "" && containsKeyword(haystack, strings.ToLower(keyword)) {
 			hits = append(hits, keyword)
 		}
 	}
@@ -80,6 +82,31 @@ func keywordScore(item Item, keywords []string) (float64, string) {
 		return 0, ""
 	}
 	return float64(len(hits)), hits[0]
+}
+
+func containsKeyword(text, keyword string) bool {
+	for start := 0; start < len(text); {
+		index := strings.Index(text[start:], keyword)
+		if index < 0 {
+			return false
+		}
+		index += start
+		end := index + len(keyword)
+		leftOK, rightOK := true, true
+		if index > 0 {
+			left, _ := utf8.DecodeLastRuneInString(text[:index])
+			leftOK = !unicode.IsLetter(left) && !unicode.IsDigit(left)
+		}
+		if end < len(text) {
+			right, _ := utf8.DecodeRuneInString(text[end:])
+			rightOK = !unicode.IsLetter(right) && !unicode.IsDigit(right)
+		}
+		if leftOK && rightOK {
+			return true
+		}
+		start = end
+	}
+	return false
 }
 
 func rankAndSelect(items []Item) []Item {

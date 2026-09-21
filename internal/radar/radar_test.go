@@ -40,6 +40,15 @@ func TestPrivateAndUnsafeURLs(t *testing.T) {
 	}
 }
 
+func TestKeywordUsesWordBoundaries(t *testing.T) {
+	if containsKeyword("ongoing progress", "go") {
+		t.Fatal("short keyword matched inside another word")
+	}
+	if !containsKeyword("go-tool for backend", "go") || !containsKeyword("personal knowledge management", "knowledge management") {
+		t.Fatal("expected keyword boundary match")
+	}
+}
+
 func TestInboxAndDedup(t *testing.T) {
 	entry := issue{Number: 7, Title: "[Radar Inbox] 一个好方法", Body: "### URL\nhttps://example.com/a\n\n### Category\nlife\n\n### My note\n稍后实践", CreatedAt: time.Now()}
 	item, err := parseInbox(entry)

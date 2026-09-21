@@ -1,16 +1,17 @@
 {
   "topics": {
     "work": {
-      "keywords": ["Go", "backend", "developer", "Codex"],
+      "keywords": ["Go", "backend", "Codex", "reliability"],
       "github_queries": [
-        "go backend in:name,description,readme",
-        "developer productivity in:name,description,readme"
+        "language:Go stars:>=100 backend in:name,description",
+        "language:Go stars:>=100 developer tools in:name,description"
       ]
     },
     "life": {
-      "keywords": ["learning", "productivity", "knowledge"],
+      "keywords": ["learning", "productivity", "knowledge management", "spaced repetition"],
       "github_queries": [
-        "learning productivity in:name,description,readme"
+        "personal knowledge management in:name,description stars:>=100",
+        "spaced repetition in:name,description stars:>=100"
       ]
     }
   },
