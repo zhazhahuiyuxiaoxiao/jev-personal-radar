@@ -17,12 +17,18 @@ go run ./cmd/radar -config config.json -dry-run
 
 ## 私有 GitHub Actions 运行
 
-1. 把本程序放进你自己的公开 GitHub 仓库；另建一个私有仓库，复制 `runtime-template/` 中的 `config.example.json`、`.github/` 到私有仓库根目录。把配置文件重命名为 `config.json`，按自己兴趣修改。不要把真实配置和导入 Issue 复制到公开仓库。
+1. 把本程序放进你自己的公开 GitHub 仓库；另建一个私有仓库，复制 `runtime-template/` 中的 `config.example.json`、`.github/` 到私有仓库根目录。把配置文件重命名为 `config.json`，按自己兴趣修改。不要把真实配置、导入 Issue 或反馈 Issue 复制到公开仓库。已有私有运行仓库只需新增 `.github/ISSUE_TEMPLATE/radar-feedback.yml`，无需改动自己的配置或密钥。
 2. 编辑私有仓库 `.github/workflows/radar.yml`：把 `YOUR_GITHUB_USER/jev-personal-radar` 和 `PIN_PUBLIC_COMMIT_SHA` 换成公开仓库名、已审核的**完整 40 位 commit SHA**。公共代码升级时再手动更新 SHA；不要让私有工作流自动运行浮动的公开分支。
 3. 在私有仓库 Settings → Secrets and variables → Actions 添加 `TYPESAFE_API_KEY`。不要把 Key 写进配置、Issue、命令行参数或提交。工作流使用该仓库自带的 `GITHUB_TOKEN` 写 Issue，不需要另建 GitHub PAT，也不需要 Codex API Key。
 4. 先手动运行一次 workflow。程序会建立 `radar-digest`、`radar-inbox` 两个标签；之后可用私有仓库的“Radar inbox”Issue 表单粘贴小红书等链接和个人备注。每天约北京时间 09:17 自动运行；GitHub 定时任务可能延迟或偶尔不触发，不能当严格准点服务。
 
 手动导入优先于自动候选。只要日报成功写入，已纳入的导入 Issue 就会关闭；未纳入的保留到后续运行。同一天重跑不会再请求 Jev，只会尝试完成未关闭的导入/旧日报 Issue。日报保留历史，不自动删除。
+
+## 私有反馈与人工调整
+
+在**私有运行仓库**点 New issue → Radar feedback，每个条目记录一次“有用”“无关”或“遗漏”，可附日报日期与简短原因。遗漏可以写希望看到的主题或公开链接；不要填写公司内部资料。反馈 Issue 不会被日报程序读取、关闭或发送给 Jev，也不会自动改变推荐，暂时由你保留作为复盘依据。
+
+建议先积累一到两周反馈，再按具体原因调整私有 `config.json`：反复出现的无关推荐，检查命中的关键词或来源是否过宽；遗漏时，先看该条目是否进入 RSS/GitHub 搜索范围，再区分是关键词漏选、Jev 判断还是每天每类三条的上限。每次只改一小处，使用 `-dry-run` 查看候选和降级提示；不要因为单条反馈就自动提高或降低某个来源权重。这个反馈入口不增加 Jev 或 Codex 调用。
 
 ## 成本、准确性与隐私边界
 

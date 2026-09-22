@@ -1,0 +1,36 @@
+name: Radar feedback
+description: 在私有运行仓库记录推荐是否有用或遗漏；不会自动修改筛选规则
+title: "[Radar Feedback] "
+body:
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: 反馈类型
+      options:
+        - 有用
+        - 无关
+        - 遗漏
+    validations:
+      required: true
+  - type: input
+    id: item
+    attributes:
+      label: 条目或主题
+      description: 对已有推荐填写标题或公开链接；遗漏可填写希望看到的主题或公开链接。不要填写私有工作资料。
+    validations:
+      required: true
+  - type: input
+    id: digest_date
+    attributes:
+      label: 日报日期
+      description: 如果对应某期日报，填写其日期，方便回看。
+      placeholder: YYYY-MM-DD
+    validations:
+      required: false
+  - type: textarea
+    id: reason
+    attributes:
+      label: 原因或希望采取的行动
+      description: 简短写明哪里有用、为何无关，或遗漏后你希望做什么；仅保存在私有 Issue，不发送给 Jev。
+    validations:
+      required: false
