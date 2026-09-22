@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,10 +20,12 @@ type Options struct {
 	GitHubToken string
 	Repository  string
 	JevKey      string
+	MiniMaxKey  string
 	Now         time.Time
 	HTTPClient  *http.Client
 	GitHubURL   string // tests only
 	JevURL      string // tests only
+	MiniMaxURL  string // tests only
 }
 
 func Run(ctx context.Context, o Options) error {
@@ -102,6 +105,7 @@ func Run(ctx context.Context, o Options) error {
 		return nil
 	}
 	allowJev := !o.DryRun && today == nil && o.JevKey != ""
+	allowSummary := !o.DryRun && today == nil && o.MiniMaxKey != ""
 	if !o.DryRun && today == nil {
 		created, err := gh.createIssue(ctx, digestTitle(date), "<!-- radar-status:running -->\n正在采集；如运行中断，重试会使用规则筛选并标明降级。", []string{"radar-digest"})
 		if err != nil {
@@ -122,107 +126,235 @@ func Run(ctx context.Context, o Options) error {
 			candidates = append(candidates, item)
 		}
 	}
-	for _, feed := range config.Feeds {
-		items, err := fetchFeed(ctx, client, feed, now)
+	for _, period := range []string{"daily", "weekly"} {
+		items, err := fetchTrending(ctx, client, period, now)
 		if err != nil {
-			failures = append(failures, feed.Name+" 读取失败")
+			failures = append(failures, "GitHub "+period+" 热榜读取失败")
 			continue
 		}
 		candidates = append(candidates, items...)
 	}
-	if gh != nil {
-		for category, topic := range config.Topics {
-			for _, query := range topic.GitHubQueries {
-				items, err := gh.searchRepositories(ctx, query, category, now)
-				if err != nil {
-					failures = append(failures, "GitHub "+category+" 搜索失败")
-					continue
-				}
-				candidates = append(candidates, items...)
-			}
-		}
-	} else {
-		failures = append(failures, "未设置 GITHUB_REPOSITORY，跳过 GitHub 搜索")
+	hnItems, hnErr := fetchHackerNews(ctx, client, now)
+	if hnErr != nil {
+		failures = append(failures, "Hacker News 热榜读取不完整")
 	}
-	var automatic []Item
-	unique := make(map[string]bool)
+	candidates = append(candidates, hnItems...)
+	var manual []Item
+	automaticByURL := make(map[string]Item)
+	manualURLs := make(map[string]bool)
 	for _, item := range candidates {
 		key := canonicalURL(item.URL)
-		if key == "" || seen[key] || unique[key] {
+		if key == "" || seen[key] {
 			continue
 		}
-		unique[key] = true
 		if item.InboxNumber > 0 {
-			automatic = append(automatic, item)
+			if !manualURLs[key] {
+				manual = append(manual, item)
+				manualURLs[key] = true
+			}
 			continue
 		}
-		score, keyword := keywordScore(item, config.Topics[item.Category].Keywords)
-		if score == 0 {
+		if manualURLs[key] {
 			continue
 		}
-		item.Score = score
-		item.Reason = "与你关注的「" + keyword + "」主题相关；是否适用需查看原文"
-		item.Action = "打开原文，判断是否值得收藏或尝试"
+		if previous, ok := automaticByURL[key]; !ok {
+			automaticByURL[key] = item
+		} else if item.HeatScore > previous.HeatScore {
+			if item.Description == "" {
+				item.Description = previous.Description
+			}
+			item.IsRepo = item.IsRepo || previous.IsRepo
+			automaticByURL[key] = item
+		} else {
+			if previous.Description == "" {
+				previous.Description = item.Description
+			}
+			previous.IsRepo = previous.IsRepo || item.IsRepo
+			automaticByURL[key] = previous
+		}
+	}
+	var automatic []Item
+	for _, item := range automaticByURL {
 		automatic = append(automatic, item)
 	}
 	sort.SliceStable(automatic, func(i, j int) bool {
-		if automatic[i].InboxNumber != automatic[j].InboxNumber {
-			return automatic[i].InboxNumber > automatic[j].InboxNumber
+		if automatic[i].HeatScore != automatic[j].HeatScore {
+			return automatic[i].HeatScore > automatic[j].HeatScore
 		}
-		return automatic[i].Score > automatic[j].Score
+		return automatic[i].URL < automatic[j].URL
 	})
-	var bounded []Item
-	counts := map[string]int{}
-	for _, item := range automatic {
-		if counts[item.Category] >= 10 {
+	if len(manual) >= 6 {
+		automatic = nil
+	}
+	if len(automatic) > maxJevRequests {
+		automatic = automatic[:maxJevRequests]
+	}
+	pageFailures := make([]bool, len(automatic))
+	var pages sync.WaitGroup
+	pageSlots := make(chan struct{}, 4)
+	for i := range automatic {
+		if automatic[i].IsRepo || automatic[i].Description != "" {
 			continue
 		}
-		counts[item.Category]++
-		bounded = append(bounded, item)
+		pages.Add(1)
+		go func(i int) {
+			defer pages.Done()
+			pageSlots <- struct{}{}
+			defer func() { <-pageSlots }()
+			description, content, err := fetchPublicPage(ctx, client, automatic[i].URL)
+			if err != nil {
+				pageFailures[i] = true
+				return
+			}
+			automatic[i].Description = description
+			automatic[i].SourceText = content
+		}(i)
 	}
-	degraded := !allowJev
+	pages.Wait()
+	failedPages := 0
+	for _, failed := range pageFailures {
+		if failed {
+			failedPages++
+		}
+	}
+	if failedPages > 0 {
+		failures = append(failures, fmt.Sprintf("%d 篇热门文章外链无法读取简介，相关性判断可能遗漏", failedPages))
+	}
+	degraded := !allowJev && len(automatic) > 0
 	jevcalls, tokens := 0, 0
+	var eligible []Item
+	eligible = append(eligible, manual...)
+	fallback := func(item *Item) {
+		workScore, workKeyword := keywordScore(*item, config.Topics[Work].Keywords)
+		lifeScore, lifeKeyword := keywordScore(*item, config.Topics[Life].Keywords)
+		if workScore == 0 && lifeScore == 0 {
+			item.Score = -1
+			return
+		}
+		item.Category = Work
+		keyword := workKeyword
+		item.Score = workScore
+		if lifeScore > workScore {
+			item.Category = Life
+			keyword = lifeKeyword
+			item.Score = lifeScore
+		}
+		item.Reason = "Jev 未参与，按「" + keyword + "」主题作保守判断"
+	}
 	if allowJev {
 		jev := newJevClient(client, o.JevKey)
 		if o.JevURL != "" {
 			jev.endpoint = o.JevURL
 		}
 		jevAvailable := true
-		for i := range bounded {
-			if bounded[i].InboxNumber > 0 {
-				continue
-			}
+		for i := range automatic {
 			if !jevAvailable {
+				fallback(&automatic[i])
 				continue
 			}
 			if jevcalls >= maxJevRequests {
 				degraded = true
-				break
+				fallback(&automatic[i])
+				continue
 			}
 			jevcalls++ // A failed request may still be billable.
-			score, err := jev.evaluate(ctx, bounded[i], config.Topics[bounded[i].Category].Keywords)
+			score, err := jev.evaluate(ctx, automatic[i], config.Topics)
 			if err != nil {
 				degraded = true
-				failures = append(failures, "Jev 判断失败，使用规则分数")
+				failures = append(failures, "Jev 判断失败，后续使用保守关键词规则")
 				jevAvailable = false
+				fallback(&automatic[i])
 				continue
 			}
 			tokens += score.Tokens
-			if score.Relevant < 0.5 || score.Actionable < 0.45 {
-				bounded[i].Score = -1
+			if score.Work < 0.6 && score.Life < 0.6 {
+				automatic[i].Score = -1
 				continue
 			}
-			bounded[i].Score = score.Relevant*10 + score.Actionable*5 + bounded[i].Score
+			automatic[i].Category = Work
+			automatic[i].Score = score.Work
+			if score.Life > score.Work {
+				automatic[i].Category = Life
+				automatic[i].Score = score.Life
+			}
+			automatic[i].Reason = "Jev 判断与你的" + map[string]string{Work: "工作", Life: "学习"}[automatic[i].Category] + "方向相关"
+		}
+	} else {
+		for i := range automatic {
+			fallback(&automatic[i])
 		}
 	}
-	var eligible []Item
-	for _, item := range bounded {
+	for _, item := range automatic {
 		if item.Score >= 0 {
 			eligible = append(eligible, item)
 		}
 	}
 	selected := rankAndSelect(eligible)
-	body := renderDigest(date, selected, degraded, failures, jevcalls, tokens)
+	summaryNote := "中文摘要仅依据公开来源，可能有误；重要事实请核对原文。"
+	if o.DryRun {
+		summaryNote = "预览不调用 MiniMax；下方显示来源原始简介。"
+	} else if o.MiniMaxKey == "" {
+		summaryNote = "未配置 MiniMax，未生成中文摘要；下方显示来源原始简介。"
+	} else if !allowSummary {
+		summaryNote = "本期为中断后的重试，不重复调用 MiniMax；未完成的条目显示原始简介。"
+	}
+	if allowSummary {
+		mini := newMiniMaxClient(client, o.MiniMaxKey)
+		if o.MiniMaxURL != "" {
+			mini.endpoint = o.MiniMaxURL
+		}
+		miniAvailable := true
+		failed := 0
+		calls := 0
+		var summaryProblems []string
+		for i := range selected {
+			item := &selected[i]
+			if item.InboxNumber > 0 || !item.AllowMiniMax || !miniAvailable || calls >= maxMiniMaxRequests {
+				continue
+			}
+			sourceText := item.SourceText
+			basis := "公开网页原文"
+			if item.IsRepo {
+				var err error
+				sourceText, err = gh.publicReadme(ctx, *item)
+				if err != nil {
+					failed++
+					summaryProblems = append(summaryProblems, "GitHub README 读取失败")
+					continue
+				}
+				basis = "GitHub README"
+			} else if sourceText == "" {
+				_, sourceText, err = fetchPublicPage(ctx, client, item.URL)
+				if err != nil {
+					failed++
+					summaryProblems = append(summaryProblems, "公开网页读取失败")
+					continue
+				}
+			}
+			if len([]rune(sourceText)) < 80 {
+				failed++
+				summaryProblems = append(summaryProblems, "来源内容过短")
+				continue
+			}
+			calls++ // Failed requests may still be billable.
+			intro, value, firstStep, err := mini.summarize(ctx, *item, sourceText)
+			if err != nil {
+				failed++
+				summaryProblems = append(summaryProblems, err.Error())
+				miniAvailable = false
+				continue
+			}
+			item.Summary, item.Value, item.FirstStep, item.SummaryFrom = intro, value, firstStep, basis
+		}
+		if failed > 0 || !miniAvailable {
+			summaryNote = fmt.Sprintf("有条目未生成中文摘要（本次 MiniMax %d 次请求；原因：%s）；这些条目显示原始简介。", calls, strings.Join(summaryProblems, "、"))
+		} else if calls == 0 {
+			summaryNote = "本期没有获准交给 MiniMax 的自动条目；显示来源原始简介。"
+		} else {
+			summaryNote = fmt.Sprintf("中文摘要依据公开来源，由 MiniMax 生成（本次 %d 次请求）；可能有误，重要事实请核对原文。", calls)
+		}
+	}
+	body := renderDigest(date, selected, degraded, failures, jevcalls, tokens, summaryNote)
 	if o.DryRun {
 		_, err = io.WriteString(o.Out, body)
 		return err

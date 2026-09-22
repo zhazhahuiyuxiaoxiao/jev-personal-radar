@@ -20,6 +20,7 @@ type xmlFeed struct {
 			Title       string `xml:"title"`
 			Link        string `xml:"link"`
 			Description string `xml:"description"`
+			Content     string `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
 			PubDate     string `xml:"pubDate"`
 		} `xml:"item"`
 	} `xml:"channel"`
@@ -30,6 +31,7 @@ type xmlFeed struct {
 			Rel  string `xml:"rel,attr"`
 		} `xml:"link"`
 		Summary string `xml:"summary"`
+		Content string `xml:"content"`
 		Updated string `xml:"updated"`
 		Date    string `xml:"published"`
 	} `xml:"entry"`
@@ -45,7 +47,7 @@ func parseDate(s string) time.Time {
 }
 
 func cleanText(s string) string {
-	return truncate(html.UnescapeString(htmlTags.ReplaceAllString(s, " ")), 300)
+	return truncate(html.UnescapeString(htmlTags.ReplaceAllString(s, " ")), 6000)
 }
 
 func parseFeed(data []byte, feed Feed, now time.Time) ([]Item, error) {
@@ -54,7 +56,7 @@ func parseFeed(data []byte, feed Feed, now time.Time) ([]Item, error) {
 		return nil, err
 	}
 	var items []Item
-	add := func(title, link, desc, date string) {
+	add := func(title, link, desc, content, date string) {
 		if validatePublicURL(link) != nil {
 			return
 		}
@@ -62,10 +64,14 @@ func parseFeed(data []byte, feed Feed, now time.Time) ([]Item, error) {
 		if !published.IsZero() && (published.Before(now.AddDate(0, 0, -7)) || published.After(now.Add(24*time.Hour))) {
 			return
 		}
-		items = append(items, Item{Title: cleanText(title), URL: link, Description: cleanText(desc), Source: feed.Name, Category: feed.Category, Published: published})
+		sourceText := cleanText(content)
+		if sourceText == "" {
+			sourceText = cleanText(desc)
+		}
+		items = append(items, Item{Title: truncate(cleanText(title), 300), URL: link, Description: truncate(cleanText(desc), 300), SourceText: sourceText, AllowMiniMax: feed.AllowMiniMax, Source: feed.Name, Category: feed.Category, Published: published})
 	}
 	for _, entry := range doc.Channel.Items {
-		add(entry.Title, entry.Link, entry.Description, entry.PubDate)
+		add(entry.Title, entry.Link, entry.Description, entry.Content, entry.PubDate)
 	}
 	for _, entry := range doc.Entries {
 		link := ""
@@ -79,7 +85,7 @@ func parseFeed(data []byte, feed Feed, now time.Time) ([]Item, error) {
 		if date == "" {
 			date = entry.Updated
 		}
-		add(entry.Title, link, entry.Summary, date)
+		add(entry.Title, link, entry.Summary, entry.Content, date)
 	}
 	if len(doc.Channel.Items) == 0 && len(doc.Entries) == 0 {
 		return nil, fmt.Errorf("feed contains no RSS items or Atom entries")

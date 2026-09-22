@@ -24,12 +24,12 @@ type jevClient struct {
 }
 
 type jevResult struct {
-	Relevant   float64
-	Actionable float64
-	Tokens     int
+	Work   float64
+	Life   float64
+	Tokens int
 }
 
-func (j *jevClient) evaluate(ctx context.Context, item Item, keywords []string) (jevResult, error) {
+func (j *jevClient) evaluate(ctx context.Context, item Item, topics map[string]Topic) (jevResult, error) {
 	var result jevResult
 	request := map[string]any{
 		"model": jevModel,
@@ -39,8 +39,8 @@ func (j *jevClient) evaluate(ctx context.Context, item Item, keywords []string) 
 			"source":      item.Source,
 		},
 		"questions": map[string]any{
-			"relevant":   map[string]any{"type": "noul", "instructions": fmt.Sprintf("Is this specific item useful to a person interested in %v? Prefer concrete, recent material over generic marketing.", keywords)},
-			"actionable": map[string]any{"type": "noul", "instructions": "Does this item offer something practical to read, try, or evaluate? Answer no for vague or promotional material."},
+			"work":     map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone working on %v? Judge the subject even if its name is new. Answer no to unrelated hype or generic marketing.", topics[Work].Keywords)},
+			"learning": map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone learning or improving productivity around %v? Judge the subject even if its name is new. Answer no to unrelated hype or generic marketing.", topics[Life].Keywords)},
 		},
 	}
 	b, err := json.Marshal(request)
@@ -77,12 +77,12 @@ func (j *jevClient) evaluate(ctx context.Context, item Item, keywords []string) 
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&data); err != nil {
 		return result, err
 	}
-	a, okA := data.Answers["relevant"]
-	c, okC := data.Answers["actionable"]
+	a, okA := data.Answers["work"]
+	c, okC := data.Answers["learning"]
 	if data.Model != jevModel || !okA || !okC || a.Type != "noul" || c.Type != "noul" || a.Noul == nil || c.Noul == nil || *a.Noul < 0 || *a.Noul > 1 || *c.Noul < 0 || *c.Noul > 1 || data.Usage.InputTokens <= 0 {
 		return result, errors.New("Jev response has unexpected model, answer or usage")
 	}
-	return jevResult{Relevant: *a.Noul, Actionable: *c.Noul, Tokens: data.Usage.InputTokens}, nil
+	return jevResult{Work: *a.Noul, Life: *c.Noul, Tokens: data.Usage.InputTokens}, nil
 }
 
 func newJevClient(client *http.Client, key string) *jevClient {

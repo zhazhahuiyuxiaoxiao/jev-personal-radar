@@ -19,9 +19,10 @@ type Topic struct {
 }
 
 type Feed struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	Category string `json:"category"`
+	Name         string `json:"name"`
+	URL          string `json:"url"`
+	Category     string `json:"category"`
+	AllowMiniMax bool   `json:"allow_minimax"`
 }
 
 type Config struct {

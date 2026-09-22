@@ -1,23 +1,11 @@
 {
   "topics": {
     "work": {
-      "keywords": ["Go", "backend", "Codex", "reliability"],
-      "github_queries": [
-        "language:Go stars:>=100 backend in:name,description",
-        "language:Go stars:>=100 developer tools in:name,description"
-      ]
+      "keywords": ["Go", "backend", "Codex", "AI developer tools", "AI API", "reliability"]
     },
     "life": {
-      "keywords": ["learning", "productivity", "knowledge management", "spaced repetition"],
-      "github_queries": [
-        "personal knowledge management in:name,description stars:>=100",
-        "spaced repetition in:name,description stars:>=100"
-      ]
+      "keywords": ["learning", "study methods", "productivity", "knowledge management"]
     }
   },
-  "feeds": [
-    {"name": "Go Blog", "url": "https://go.dev/blog/feed.atom", "category": "work"},
-    {"name": "GitHub Changelog", "url": "https://github.blog/changelog/feed/", "category": "work"},
-    {"name": "Ness Labs", "url": "https://nesslabs.com/feed", "category": "life"}
-  ]
+  "feeds": []
 }

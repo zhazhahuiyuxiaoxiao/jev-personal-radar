@@ -41,4 +41,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: go run ./cmd/radar -config ../runtime/config.json

@@ -12,17 +12,26 @@ import (
 )
 
 type Item struct {
-	Title       string
-	URL         string
-	Description string
-	Source      string
-	Category    string
-	Published   time.Time
-	InboxNumber int
-	Note        string
-	Score       float64
-	Reason      string
-	Action      string
+	Title        string
+	URL          string
+	Description  string
+	SourceText   string // Public source text used only after selection for summaries.
+	IsRepo       bool
+	AllowMiniMax bool
+	Source       string
+	Category     string
+	Published    time.Time
+	InboxNumber  int
+	Note         string
+	Score        float64
+	Reason       string
+	HeatScore    float64
+	HeatEvidence string
+	HeatURL      string
+	Summary      string
+	Value        string
+	FirstStep    string
+	SummaryFrom  string
 }
 
 func validatePublicURL(raw string) error {
@@ -110,27 +119,20 @@ func containsKeyword(text, keyword string) bool {
 }
 
 func rankAndSelect(items []Item) []Item {
-	var result []Item
-	for _, category := range []string{Work, Life} {
-		var group []Item
-		for _, item := range items {
-			if item.Category == category {
-				group = append(group, item)
-			}
+	sort.SliceStable(items, func(i, j int) bool {
+		if (items[i].InboxNumber > 0) != (items[j].InboxNumber > 0) {
+			return items[i].InboxNumber > 0
 		}
-		sort.SliceStable(group, func(i, j int) bool {
-			if (group[i].InboxNumber > 0) != (group[j].InboxNumber > 0) {
-				return group[i].InboxNumber > 0
-			}
-			if group[i].Score != group[j].Score {
-				return group[i].Score > group[j].Score
-			}
-			return group[i].Published.After(group[j].Published)
-		})
-		if len(group) > 3 {
-			group = group[:3]
+		if items[i].HeatScore != items[j].HeatScore {
+			return items[i].HeatScore > items[j].HeatScore
 		}
-		result = append(result, group...)
+		if items[i].Score != items[j].Score {
+			return items[i].Score > items[j].Score
+		}
+		return items[i].Published.After(items[j].Published)
+	})
+	if len(items) > 6 {
+		return items[:6]
 	}
-	return result
+	return items
 }

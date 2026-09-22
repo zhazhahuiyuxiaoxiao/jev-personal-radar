@@ -3,6 +3,7 @@ package radar
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,6 +142,7 @@ func (g *githubClient) searchRepositories(ctx context.Context, query, category s
 			UpdatedAt   time.Time `json:"updated_at"`
 			Archived    bool      `json:"archived"`
 			Fork        bool      `json:"fork"`
+			Private     bool      `json:"private"`
 		} `json:"items"`
 	}
 	if err := g.request(ctx, http.MethodGet, path, nil, &response); err != nil {
@@ -151,10 +153,46 @@ func (g *githubClient) searchRepositories(ctx context.Context, query, category s
 	}
 	var items []Item
 	for _, entry := range response.Items {
-		if entry.Archived || entry.Fork || validatePublicURL(entry.HTMLURL) != nil {
+		if entry.Archived || entry.Fork || entry.Private || validatePublicURL(entry.HTMLURL) != nil {
 			continue
 		}
-		items = append(items, Item{Title: entry.FullName, URL: entry.HTMLURL, Description: truncate(entry.Description, 300), Source: "GitHub", Category: category, Published: entry.UpdatedAt})
+		items = append(items, Item{Title: entry.FullName, URL: entry.HTMLURL, Description: truncate(entry.Description, 300), IsRepo: true, AllowMiniMax: true, Source: "GitHub", Category: category, Published: entry.UpdatedAt})
 	}
 	return items, nil
+}
+
+func (g *githubClient) publicReadme(ctx context.Context, item Item) (string, error) {
+	u, err := url.Parse(item.URL)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "github.com") || u.User != nil {
+		return "", errors.New("not a public GitHub repository URL")
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.ContainsAny(parts[0]+parts[1], "%\\") {
+		return "", errors.New("not a GitHub repository root URL")
+	}
+	var readme struct {
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	path := "/repos/" + url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]) + "/readme"
+	if err := g.request(ctx, http.MethodGet, path, nil, &readme); err != nil {
+		return "", err
+	}
+	if readme.Encoding != "base64" || readme.Content == "" {
+		return "", errors.New("README content is unavailable")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(readme.Content)
+	if err != nil {
+		return "", fmt.Errorf("decode README: %w", err)
+	}
+	return readmeExcerpt(string(decoded)), nil
+}
+
+func isGitHubRepoRoot(link string) bool {
+	u, err := url.Parse(link)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "github.com") || u.User != nil {
+		return false
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] != "" && !strings.ContainsAny(parts[0]+parts[1], "%\\")
 }
