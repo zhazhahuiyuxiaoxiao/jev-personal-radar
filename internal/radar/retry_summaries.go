@@ -41,7 +41,7 @@ func retrySummaries(ctx context.Context, gh *githubClient, client *http.Client, 
 	}
 	for i := 0; i < heading; i++ {
 		line := lines[i]
-		if strings.HasPrefix(line, "有条目未生成中文摘要（") || strings.HasPrefix(line, "未配置 MiniMax，") || strings.HasPrefix(line, "本期为中断后的重试，") || strings.HasPrefix(line, "中文摘要依据公开来源，") {
+		if strings.HasPrefix(line, "有条目未生成中文摘要（") || strings.HasPrefix(line, "未配置 MiniMax，") || strings.HasPrefix(line, "本期为中断后的重试，") || strings.HasPrefix(line, "中文摘要依据公开来源，") || strings.HasPrefix(line, "今日已补生成 ") {
 			if note >= 0 {
 				return errors.New("today's digest has multiple summary notes")
 			}

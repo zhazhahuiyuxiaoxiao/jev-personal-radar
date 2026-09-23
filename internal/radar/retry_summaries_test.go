@@ -52,6 +52,42 @@ func TestRetrySummariesUpdatesOnlyExistingDigest(t *testing.T) {
 	if miniCalls != 1 || readmeCalls != 1 || patched == "" || !strings.Contains(patched, "是什么：一个公开工具") || !strings.Contains(patched, "为什么火：今日新增 100 星") || !strings.Contains(patched, "Jev：20 次请求，8167 输入 token") || !strings.Contains(patched, "私人备注") || !strings.Contains(patched, "<!-- radar-inbox: 12 -->") || strings.Contains(patched, "暂无可靠中文说明") {
 		t.Fatalf("retry changed unexpected fields or missed explanation: MiniMax=%d README=%d body=%s", miniCalls, readmeCalls, patched)
 	}
+	today.Body = patched
+	if err := retrySummaries(context.Background(), gh, client, today, "test-mini-key", "", io.Discard); err != nil || miniCalls != 1 {
+		t.Fatalf("completed retry should be idempotent: err=%v MiniMax=%d", err, miniCalls)
+	}
+}
+
+func TestRetrySummariesContinuesPartiallyCompletedDigest(t *testing.T) {
+	first := Item{Title: "example/first", URL: "https://github.com/example/first", IsRepo: true, Summary: "已有中文说明", Value: "已有用途", FirstStep: "已有步骤", SummaryFrom: "GitHub README", Source: "GitHub"}
+	second := Item{Title: "example/second", URL: "https://github.com/example/second", Description: "Original public description", IsRepo: true, Source: "GitHub"}
+	original := renderDigest("2026-09-23", []Item{first, second}, false, nil, 20, 8167, "今日已补生成 1 条中文说明（本次 MiniMax 2 次请求）；另有 1 条未生成：摘要过长。")
+	today := issue{Number: 2, Title: digestTitle("2026-09-23"), Body: original, State: "open"}
+	var patched string
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.URL.Path == "/repos/example/second/readme":
+			content := base64.StdEncoding.EncodeToString([]byte("# Second\nThis public tool has detailed installation instructions, examples, and an overview of its useful features for developers."))
+			return testResponse(200, `{"encoding":"base64","content":"`+content+`"}`), nil
+		case req.URL.Host == "api.minimax.cn":
+			return testResponse(200, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"intro\":\"第二个工具\",\"value\":\"帮助学习\",\"first_step\":\"看文档\"}"}}],"base_resp":{"status_code":0}}`), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/repos/o/private/issues/2":
+			b, _ := json.Marshal(today)
+			return testResponse(200, string(b)), nil
+		case req.Method == http.MethodPatch && req.URL.Path == "/repos/o/private/issues/2":
+			var fields struct{ Body string }
+			_ = json.NewDecoder(req.Body).Decode(&fields)
+			patched = fields.Body
+			return testResponse(200, `{}`), nil
+		default:
+			t.Errorf("unexpected request %s %s", req.Method, req.URL)
+			return testResponse(404, `{}`), nil
+		}
+	})}
+	gh, _ := newGitHubClient(client, "test-token", "o/private")
+	if err := retrySummaries(context.Background(), gh, client, today, "test-mini-key", "", io.Discard); err != nil || !strings.Contains(patched, "第二个工具") || !strings.Contains(patched, "已有中文说明") {
+		t.Fatalf("partial retry failed: err=%v body=%s", err, patched)
+	}
 }
 
 func TestRetrySummariesPreservesDigestOnMiniMaxFailure(t *testing.T) {
