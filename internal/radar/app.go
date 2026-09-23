@@ -13,22 +13,29 @@ import (
 )
 
 type Options struct {
-	ConfigPath  string
-	Date        string
-	DryRun      bool
-	Out         io.Writer
-	GitHubToken string
-	Repository  string
-	JevKey      string
-	MiniMaxKey  string
-	Now         time.Time
-	HTTPClient  *http.Client
-	GitHubURL   string // tests only
-	JevURL      string // tests only
-	MiniMaxURL  string // tests only
+	ConfigPath     string
+	Date           string
+	DryRun         bool
+	RetrySummaries bool
+	Out            io.Writer
+	GitHubToken    string
+	Repository     string
+	JevKey         string
+	MiniMaxKey     string
+	Now            time.Time
+	HTTPClient     *http.Client
+	GitHubURL      string // tests only
+	JevURL         string // tests only
+	MiniMaxURL     string // tests only
 }
 
 func Run(ctx context.Context, o Options) error {
+	if o.RetrySummaries && o.DryRun {
+		return errors.New("-retry-summaries cannot be combined with -dry-run")
+	}
+	if o.RetrySummaries && o.MiniMaxKey == "" {
+		return errors.New("MINIMAX_API_KEY is required to retry summaries")
+	}
 	config, err := LoadConfig(o.ConfigPath)
 	if err != nil {
 		return err
@@ -74,7 +81,7 @@ func Run(ctx context.Context, o Options) error {
 	var digests, inbox []issue
 	var today *issue
 	if gh != nil && o.GitHubToken != "" {
-		if !o.DryRun {
+		if !o.DryRun && !o.RetrySummaries {
 			if err := gh.ensureLabel(ctx, "radar-digest", "0e8a16"); err != nil {
 				return err
 			}
@@ -86,9 +93,11 @@ func Run(ctx context.Context, o Options) error {
 		if err != nil {
 			return err
 		}
-		inbox, err = gh.listIssues(ctx, "radar-inbox", "open")
-		if err != nil {
-			return err
+		if !o.RetrySummaries {
+			inbox, err = gh.listIssues(ctx, "radar-inbox", "open")
+			if err != nil {
+				return err
+			}
 		}
 		for i := range digests {
 			if digests[i].Title == digestTitle(date) {
@@ -96,6 +105,12 @@ func Run(ctx context.Context, o Options) error {
 				break
 			}
 		}
+	}
+	if o.RetrySummaries {
+		if today == nil || !strings.Contains(today.Body, "<!-- radar-status:complete -->") {
+			return errors.New("today's completed digest is required to retry summaries")
+		}
+		return retrySummaries(ctx, gh, client, *today, o.MiniMaxKey, o.MiniMaxURL, o.Out)
 	}
 	if today != nil && strings.Contains(today.Body, "<!-- radar-status:complete -->") {
 		if !o.DryRun {

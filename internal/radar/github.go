@@ -113,6 +113,12 @@ func (g *githubClient) updateIssue(ctx context.Context, number int, body, state 
 	return g.request(ctx, http.MethodPatch, "/repos/"+g.repo+"/issues/"+strconv.Itoa(number), fields, nil)
 }
 
+func (g *githubClient) getIssue(ctx context.Context, number int) (issue, error) {
+	var out issue
+	err := g.request(ctx, http.MethodGet, "/repos/"+g.repo+"/issues/"+strconv.Itoa(number), nil, &out)
+	return out, err
+}
+
 func (g *githubClient) ensureLabel(ctx context.Context, name, color string) error {
 	var label struct {
 		Name string `json:"name"`
