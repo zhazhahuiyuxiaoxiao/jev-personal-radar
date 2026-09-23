@@ -139,7 +139,15 @@ func TestGlobalHeatSelectionKeepsManualPriority(t *testing.T) {
 }
 
 func TestMiniMaxRejectsIncompleteSummary(t *testing.T) {
-	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var payload struct {
+			Thinking struct {
+				Type string `json:"type"`
+			} `json:"thinking"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil || payload.Thinking.Type != "disabled" {
+			t.Errorf("MiniMax request must disable reasoning for short summaries: %v, %+v", err, payload)
+		}
 		return testResponse(200, `{"choices":[{"finish_reason":"length","message":{"content":"{\"intro\":\"未完成\",\"points\":[\"重点\"]}"}}],"base_resp":{"status_code":0}}`), nil
 	})}
 	mini := newMiniMaxClient(client, "test-key")

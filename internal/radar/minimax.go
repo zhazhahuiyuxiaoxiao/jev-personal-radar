@@ -66,6 +66,7 @@ func (m *miniMaxClient) summarize(ctx context.Context, item Item, sourceText str
 			{"role": "user", "content": "标题：" + item.Title + "\n来源正文：\n" + truncate(sourceText, maxSummarySource)},
 		},
 		"reasoning_split":       true,
+		"thinking":              map[string]string{"type": "disabled"},
 		"max_completion_tokens": 1000,
 		"temperature":           0.2,
 		"stream":                false,
@@ -111,8 +112,11 @@ func (m *miniMaxClient) summarize(ctx context.Context, item Item, sourceText str
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", "", fmt.Errorf("decode MiniMax response: %w", err)
 	}
-	if result.BaseResp.StatusCode != 0 || len(result.Choices) == 0 || result.Choices[0].FinishReason != "stop" {
-		return "", "", "", errors.New("MiniMax did not return a complete answer")
+	if result.BaseResp.StatusCode != 0 || len(result.Choices) == 0 {
+		return "", "", "", fmt.Errorf("MiniMax did not return a complete answer (status %d, choices %d)", result.BaseResp.StatusCode, len(result.Choices))
+	}
+	if result.Choices[0].FinishReason != "stop" {
+		return "", "", "", fmt.Errorf("MiniMax did not return a complete answer (finish_reason %q)", result.Choices[0].FinishReason)
 	}
 	var summary struct {
 		Intro     string `json:"intro"`
