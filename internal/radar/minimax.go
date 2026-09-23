@@ -129,8 +129,22 @@ func (m *miniMaxClient) summarize(ctx context.Context, item Item, sourceText str
 	summary.Intro = strings.TrimSpace(summary.Intro)
 	summary.Value = strings.TrimSpace(summary.Value)
 	summary.FirstStep = strings.TrimSpace(summary.FirstStep)
-	if summary.Intro == "" || summary.Value == "" || summary.FirstStep == "" || utf8.RuneCountInString(summary.Intro) > 120 || utf8.RuneCountInString(summary.Value) > 100 || utf8.RuneCountInString(summary.FirstStep) > 100 {
-		return "", "", "", errors.New("MiniMax summary has invalid fields or length")
+	if summary.Intro == "" || summary.Value == "" || summary.FirstStep == "" {
+		return "", "", "", errors.New("MiniMax summary is missing a required field")
 	}
-	return summary.Intro, summary.Value, summary.FirstStep, nil
+	return shortenSummary(summary.Intro, 120), shortenSummary(summary.Value, 100), shortenSummary(summary.FirstStep, 100), nil
+}
+
+func shortenSummary(s string, max int) string {
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	for i := max - 1; i >= max/2; i-- {
+		if strings.ContainsRune("。！？；.!?;", runes[i]) {
+			return string(runes[:i+1])
+		}
+	}
+	return string(runes[:max-1]) + "…"
 }

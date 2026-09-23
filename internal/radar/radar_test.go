@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestParseRSSAndAtom(t *testing.T) {
@@ -164,6 +165,20 @@ func TestMiniMaxRequiresPlainLanguageAndFirstStepFields(t *testing.T) {
 	mini := newMiniMaxClient(client, "test-key")
 	if _, _, _, err := mini.summarize(context.Background(), Item{Title: "test"}, strings.Repeat("public source text ", 10)); err == nil {
 		t.Fatal("accepted a summary without a first step")
+	}
+}
+
+func TestMiniMaxShortensOverlongCompleteFields(t *testing.T) {
+	long := strings.Repeat("这是公开资料中的功能说明。", 15)
+	encoded, _ := json.Marshal(map[string]string{"intro": long, "value": long, "first_step": long})
+	response, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": string(encoded)}}}, "base_resp": map[string]int{"status_code": 0}})
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return testResponse(200, string(response)), nil
+	})}
+	mini := newMiniMaxClient(client, "test-key")
+	intro, value, step, err := mini.summarize(context.Background(), Item{Title: "test"}, strings.Repeat("public source text ", 10))
+	if err != nil || utf8.RuneCountInString(intro) > 120 || utf8.RuneCountInString(value) > 100 || utf8.RuneCountInString(step) > 100 || !strings.HasSuffix(intro, "。") {
+		t.Fatalf("overlong complete summary not safely shortened: lengths=%d/%d/%d err=%v", utf8.RuneCountInString(intro), utf8.RuneCountInString(value), utf8.RuneCountInString(step), err)
 	}
 }
 
