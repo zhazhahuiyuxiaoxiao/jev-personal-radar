@@ -13,26 +13,30 @@ import (
 )
 
 type Options struct {
-	ConfigPath     string
-	Date           string
-	DryRun         bool
-	RetrySummaries bool
-	RetryEmpty     bool
-	Out            io.Writer
-	GitHubToken    string
-	Repository     string
-	JevKey         string
-	MiniMaxKey     string
-	Now            time.Time
-	HTTPClient     *http.Client
-	GitHubURL      string // tests only
-	JevURL         string // tests only
-	MiniMaxURL     string // tests only
+	ConfigPath        string
+	Date              string
+	DryRun            bool
+	RetrySummaries    bool
+	RetryEmpty        bool
+	RetryAfterChinese bool
+	Out               io.Writer
+	GitHubToken       string
+	Repository        string
+	JevKey            string
+	MiniMaxKey        string
+	Now               time.Time
+	HTTPClient        *http.Client
+	GitHubURL         string // tests only
+	JevURL            string // tests only
+	MiniMaxURL        string // tests only
 }
 
 func Run(ctx context.Context, o Options) error {
 	if o.RetrySummaries && o.DryRun {
 		return errors.New("-retry-summaries cannot be combined with -dry-run")
+	}
+	if o.RetryAfterChinese && (o.DryRun || o.RetrySummaries || o.RetryEmpty) {
+		return errors.New("-retry-after-chinese cannot be combined with other modes")
 	}
 	if o.RetryEmpty && (o.DryRun || o.RetrySummaries) {
 		return errors.New("-retry-empty cannot be combined with -dry-run or -retry-summaries")
@@ -116,7 +120,7 @@ func Run(ctx context.Context, o Options) error {
 		}
 		return retrySummaries(ctx, gh, client, *today, o.MiniMaxKey, o.MiniMaxURL, o.Out)
 	}
-	if o.RetryEmpty {
+	if o.RetryEmpty || o.RetryAfterChinese {
 		if today == nil {
 			return errors.New("today's completed empty digest is required for project retry")
 		}

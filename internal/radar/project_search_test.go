@@ -227,6 +227,69 @@ func TestRetryEmptyUpdatesOnceAndPreservesDailyUsage(t *testing.T) {
 	}
 }
 
+func TestOneTimeAfterChineseRetryPreservesUsageAndBothMarkers(t *testing.T) {
+	now := time.Date(2026, 9, 24, 14, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	body := renderDigest("2026-09-24", nil, false, nil, 48, 22400, "")
+	body = strings.Replace(body, "<!-- radar-status:complete -->", "<!-- radar-status:complete -->\n<!-- radar-chinese-pass:complete -->", 1)
+	digest := issue{Number: 3, Body: body, State: "open", CreatedAt: now}
+	jevCalls, updates := 0, 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.URL.Path == "/search/repositories":
+			return testResponse(200, searchResponse(searchedRepo{FullName: "example/full-stack", HTMLURL: "https://github.com/example/full-stack", CreatedAt: now.AddDate(0, -1, 0), Stars: 5})), nil
+		case strings.HasSuffix(req.URL.Path, "/readme"):
+			return testResponse(200, readmeResponse(fullStackReadme)), nil
+		case strings.HasSuffix(req.URL.Path, "/stargazers/history"):
+			return testResponse(200, starHistoryResponse(now, 5)), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/repos/o/private/issues/3":
+			data, _ := json.Marshal(digest)
+			return testResponse(200, string(data)), nil
+		case req.Method == http.MethodPatch && req.URL.Path == "/repos/o/private/issues/3":
+			var data struct {
+				Body string `json:"body"`
+			}
+			_ = json.NewDecoder(req.Body).Decode(&data)
+			digest.Body = data.Body
+			updates++
+			return testResponse(200, `{}`), nil
+		case req.URL.Host == "api.typesafe.ai":
+			jevCalls++
+			return testResponse(200, `{"model":"jev-1.13.0","answers":{"work":{"type":"noul","noul":0.9},"learning":{"type":"noul","noul":0.8}},"usage":{"input_tokens":100}}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+			return nil, nil
+		}
+	})}
+	gh, _ := newGitHubClient(client, "test-token", "o/private")
+	config := Config{Topics: map[string]Topic{Work: {Keywords: []string{"full-stack"}}, Life: {Keywords: []string{"learning"}}}}
+	o := Options{JevKey: "test-key", RetryAfterChinese: true, Out: io.Discard}
+	if err := retryEmptyDigest(context.Background(), gh, client, config, o, digest, []issue{digest}, now); err != nil {
+		t.Fatal(err)
+	}
+	if jevCalls != 1 || updates != 2 || !strings.Contains(digest.Body, "<!-- radar-chinese-pass:complete -->") || !strings.Contains(digest.Body, "<!-- radar-project-pass:complete -->") || !strings.Contains(digest.Body, "Jev：49 次请求，22500 输入 token") {
+		t.Fatalf("after-Chinese retry: Jev=%d updates=%d body=%s", jevCalls, updates, digest.Body)
+	}
+	if err := retryEmptyDigest(context.Background(), gh, client, config, o, digest, []issue{digest}, now); err == nil || jevCalls != 1 {
+		t.Fatalf("repeated after-Chinese retry made paid calls: %v, %d", err, jevCalls)
+	}
+}
+
+func TestAfterChineseRetryRejectsWrongDayOrBudget(t *testing.T) {
+	body := renderDigest("2026-09-24", nil, false, nil, 49, 22400, "")
+	body = strings.Replace(body, "<!-- radar-status:complete -->", "<!-- radar-status:complete -->\n<!-- radar-chinese-pass:complete -->", 1)
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("invalid retry made a request: %s", req.URL)
+		return nil, nil
+	})}
+	gh, _ := newGitHubClient(client, "test-token", "o/private")
+	o := Options{JevKey: "test-key", RetryAfterChinese: true}
+	for _, now := range []time.Time{time.Date(2026, 9, 24, 14, 0, 0, 0, time.UTC), time.Date(2026, 9, 25, 14, 0, 0, 0, time.UTC)} {
+		if err := retryEmptyDigest(context.Background(), gh, client, Config{}, o, issue{Number: 3, Body: body, State: "open"}, nil, now); err == nil {
+			t.Fatalf("accepted invalid after-Chinese retry on %s", now)
+		}
+	}
+}
+
 func TestProjectPassJevFailureIsDegraded(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return testResponse(401, `{}`), nil

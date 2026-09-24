@@ -77,8 +77,19 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 	if today.State != "open" || !strings.Contains(today.Body, "<!-- radar-status:complete -->") || !strings.Contains(today.Body, "## 今日热点\n\n暂无新条目。") {
 		return errors.New("today's digest is not a completed empty digest")
 	}
-	if strings.Contains(today.Body, "<!-- radar-chinese-pass:") || strings.Contains(today.Body, "<!-- radar-project-pass:") {
+	oldRetryComplete := strings.Contains(today.Body, "<!-- radar-chinese-pass:complete -->")
+	if strings.Contains(today.Body, "<!-- radar-project-pass:") {
 		return errors.New("today's project retry was already started; check the existing Issue and Actions run")
+	}
+	if o.RetryAfterChinese {
+		if now.Format("2006-01-02") != "2026-09-24" {
+			return errors.New("the one-time after-Chinese retry is only available on 2026-09-24 Asia/Shanghai")
+		}
+		if !oldRetryComplete {
+			return errors.New("a completed legacy Chinese retry is required for this one-time project retry")
+		}
+	} else if strings.Contains(today.Body, "<!-- radar-chinese-pass:") {
+		return errors.New("today's legacy Chinese retry was already started; use the explicit after-Chinese mode if authorized")
 	}
 	if o.JevKey == "" {
 		return errors.New("TYPESAFE_API_KEY is required for project retry")
@@ -88,8 +99,8 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 		return errors.New("today's digest has no recognizable Jev usage")
 	}
 	previousCalls, err := strconv.Atoi(usage[1])
-	if err != nil || previousCalls < 0 || previousCalls > maxJevRequests {
-		return errors.New("today's Jev usage exceeds the first-pass limit")
+	if err != nil || previousCalls < 0 || (!o.RetryAfterChinese && previousCalls > maxJevRequests) || (o.RetryAfterChinese && previousCalls+maxProjectJevRequests > 78) {
+		return errors.New("today's Jev usage exceeds the allowed retry limit")
 	}
 	previousTokens, err := strconv.Atoi(usage[2])
 	if err != nil {
@@ -119,6 +130,9 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 	}
 	body := renderDigest(now.Format("2006-01-02"), selected, result.Degraded, result.Failures, previousCalls+result.Calls, previousTokens+result.Tokens, summaryNote)
 	body = strings.Replace(body, "<!-- radar-status:complete -->", "<!-- radar-status:complete -->\n<!-- radar-project-pass:complete -->", 1)
+	if oldRetryComplete {
+		body = strings.Replace(body, "<!-- radar-project-pass:complete -->", "<!-- radar-chinese-pass:complete -->\n<!-- radar-project-pass:complete -->", 1)
+	}
 	body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 全栈项目（中文优先，核对 README 与近期增星）。\n\n## 今日热点", 1)
 	if err := gh.updateIssue(ctx, today.Number, body, ""); err != nil {
 		return fmt.Errorf("project retry completed but could not update Issue #%d: %w", today.Number, err)
