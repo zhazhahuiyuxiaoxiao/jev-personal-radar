@@ -247,6 +247,8 @@ func TestLegacyFeedDoesNotEnterHotDigest(t *testing.T) {
 			return testResponse(503, "unavailable"), nil
 		case req.URL.Path == "/v0/topstories.json":
 			return testResponse(200, `[]`), nil
+		case req.URL.Path == "/search/repositories":
+			return testResponse(200, `{"items":[]}`), nil
 		case strings.Contains(req.URL.Path, "/labels/"):
 			return testResponse(200, `{}`), nil
 		case req.URL.Path == "/repos/o/private/issues" && req.Method == http.MethodGet:

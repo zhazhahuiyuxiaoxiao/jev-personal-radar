@@ -118,7 +118,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	if o.RetryEmpty {
 		if today == nil {
-			return errors.New("today's completed empty digest is required for Chinese retry")
+			return errors.New("today's completed empty digest is required for project retry")
 		}
 		return retryEmptyDigest(ctx, gh, client, config, o, *today, digests, now)
 	}
@@ -302,22 +302,29 @@ func Run(ctx context.Context, o Options) error {
 			eligible = append(eligible, item)
 		}
 	}
-	chinesePassUsed := len(eligible) == 0
-	if chinesePassUsed {
+	projectPassUsed := len(eligible) == 0
+	if projectPassUsed {
 		considered := make(map[string]bool, len(automatic))
 		for _, item := range automatic {
 			considered[canonicalURL(item.URL)] = true
 		}
-		chineseKey := o.JevKey
+		projectKey := o.JevKey
 		if !allowJev || firstJevFailed {
-			chineseKey = ""
+			projectKey = ""
 		}
-		chinese := findChineseCandidates(ctx, client, now, seen, considered, config, chineseKey, o.JevURL, maxChineseJevRequests)
-		eligible = append(eligible, chinese.Items...)
-		jevcalls += chinese.Calls
-		tokens += chinese.Tokens
-		degraded = degraded || chinese.Degraded
-		failures = append(failures, chinese.Failures...)
+		if gh == nil {
+			gh, _ = newGitHubClient(client, "", "public/search")
+			if o.GitHubURL != "" {
+				gh.baseURL = o.GitHubURL
+			}
+		}
+		projects, projectFailures := gh.findProjectCandidates(ctx, now, seen, considered, maxProjectJevRequests)
+		result := scoreProjectCandidates(ctx, client, projects, config, projectKey, o.JevURL)
+		eligible = append(eligible, result.Items...)
+		jevcalls += result.Calls
+		tokens += result.Tokens
+		degraded = degraded || result.Degraded
+		failures = append(failures, append(projectFailures, result.Failures...)...)
 	}
 	selected := rankAndSelect(eligible)
 	summaryNote := "中文摘要仅依据公开来源，可能有误；重要事实请核对原文。"
@@ -385,8 +392,8 @@ func Run(ctx context.Context, o Options) error {
 		}
 	}
 	body := renderDigest(date, selected, degraded, failures, jevcalls, tokens, summaryNote)
-	if chinesePassUsed {
-		body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 中文 Trending。\n\n## 今日热点", 1)
+	if projectPassUsed {
+		body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 全栈项目（中文优先，核对 README 与近期增星）。\n\n## 今日热点", 1)
 	}
 	if o.DryRun {
 		_, err = io.WriteString(o.Out, body)

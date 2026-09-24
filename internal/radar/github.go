@@ -168,6 +168,14 @@ func (g *githubClient) searchRepositories(ctx context.Context, query, category s
 }
 
 func (g *githubClient) publicReadme(ctx context.Context, item Item) (string, error) {
+	raw, err := g.publicReadmeRaw(ctx, item)
+	if err != nil {
+		return "", err
+	}
+	return readmeExcerpt(raw), nil
+}
+
+func (g *githubClient) publicReadmeRaw(ctx context.Context, item Item) (string, error) {
 	u, err := url.Parse(item.URL)
 	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "github.com") || u.User != nil {
 		return "", errors.New("not a public GitHub repository URL")
@@ -191,7 +199,7 @@ func (g *githubClient) publicReadme(ctx context.Context, item Item) (string, err
 	if err != nil {
 		return "", fmt.Errorf("decode README: %w", err)
 	}
-	return readmeExcerpt(string(decoded)), nil
+	return string(decoded), nil
 }
 
 func isGitHubRepoRoot(link string) bool {

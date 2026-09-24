@@ -62,7 +62,7 @@ func renderDigest(date string, items []Item, degraded bool, failures []string, j
 			b.WriteString("本期仅有手动导入条目，无需调用 Jev。\n\n")
 		}
 	} else {
-		b.WriteString("筛选方式：先看公开热榜，再由 Jev 判断相关性；标题与链接来自原始来源。\n\n")
+		b.WriteString("筛选方式：先看公开热榜，空结果时补查公开项目，再由 Jev 判断相关性；标题与链接来自原始来源。\n\n")
 	}
 	if summaryNote != "" {
 		b.WriteString(markdownText(summaryNote) + "\n\n")
