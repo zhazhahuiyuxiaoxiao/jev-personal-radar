@@ -17,6 +17,7 @@ type Options struct {
 	Date           string
 	DryRun         bool
 	RetrySummaries bool
+	RetryEmpty     bool
 	Out            io.Writer
 	GitHubToken    string
 	Repository     string
@@ -32,6 +33,9 @@ type Options struct {
 func Run(ctx context.Context, o Options) error {
 	if o.RetrySummaries && o.DryRun {
 		return errors.New("-retry-summaries cannot be combined with -dry-run")
+	}
+	if o.RetryEmpty && (o.DryRun || o.RetrySummaries) {
+		return errors.New("-retry-empty cannot be combined with -dry-run or -retry-summaries")
 	}
 	if o.RetrySummaries && o.MiniMaxKey == "" {
 		return errors.New("MINIMAX_API_KEY is required to retry summaries")
@@ -111,6 +115,12 @@ func Run(ctx context.Context, o Options) error {
 			return errors.New("today's completed digest is required to retry summaries")
 		}
 		return retrySummaries(ctx, gh, client, *today, o.MiniMaxKey, o.MiniMaxURL, o.Out)
+	}
+	if o.RetryEmpty {
+		if today == nil {
+			return errors.New("today's completed empty digest is required for Chinese retry")
+		}
+		return retryEmptyDigest(ctx, gh, client, config, o, *today, digests, now)
 	}
 	if today != nil && strings.Contains(today.Body, "<!-- radar-status:complete -->") {
 		if !o.DryRun {
@@ -236,25 +246,12 @@ func Run(ctx context.Context, o Options) error {
 		failures = append(failures, fmt.Sprintf("%d 篇热门文章外链无法读取简介，相关性判断可能遗漏", failedPages))
 	}
 	degraded := !allowJev && len(automatic) > 0
+	firstJevFailed := false
 	jevcalls, tokens := 0, 0
 	var eligible []Item
 	eligible = append(eligible, manual...)
 	fallback := func(item *Item) {
-		workScore, workKeyword := keywordScore(*item, config.Topics[Work].Keywords)
-		lifeScore, lifeKeyword := keywordScore(*item, config.Topics[Life].Keywords)
-		if workScore == 0 && lifeScore == 0 {
-			item.Score = -1
-			return
-		}
-		item.Category = Work
-		keyword := workKeyword
-		item.Score = workScore
-		if lifeScore > workScore {
-			item.Category = Life
-			keyword = lifeKeyword
-			item.Score = lifeScore
-		}
-		item.Reason = "Jev 未参与，按「" + keyword + "」主题作保守判断"
+		keywordFallback(item, config)
 	}
 	if allowJev {
 		jev := newJevClient(client, o.JevKey)
@@ -276,6 +273,7 @@ func Run(ctx context.Context, o Options) error {
 			score, err := jev.evaluate(ctx, automatic[i], config.Topics)
 			if err != nil {
 				degraded = true
+				firstJevFailed = true
 				failures = append(failures, "Jev 判断失败，后续使用保守关键词规则")
 				jevAvailable = false
 				fallback(&automatic[i])
@@ -303,6 +301,23 @@ func Run(ctx context.Context, o Options) error {
 		if item.Score >= 0 {
 			eligible = append(eligible, item)
 		}
+	}
+	chinesePassUsed := len(eligible) == 0
+	if chinesePassUsed {
+		considered := make(map[string]bool, len(automatic))
+		for _, item := range automatic {
+			considered[canonicalURL(item.URL)] = true
+		}
+		chineseKey := o.JevKey
+		if !allowJev || firstJevFailed {
+			chineseKey = ""
+		}
+		chinese := findChineseCandidates(ctx, client, now, seen, considered, config, chineseKey, o.JevURL, maxChineseJevRequests)
+		eligible = append(eligible, chinese.Items...)
+		jevcalls += chinese.Calls
+		tokens += chinese.Tokens
+		degraded = degraded || chinese.Degraded
+		failures = append(failures, chinese.Failures...)
 	}
 	selected := rankAndSelect(eligible)
 	summaryNote := "中文摘要仅依据公开来源，可能有误；重要事实请核对原文。"
@@ -370,6 +385,9 @@ func Run(ctx context.Context, o Options) error {
 		}
 	}
 	body := renderDigest(date, selected, degraded, failures, jevcalls, tokens, summaryNote)
+	if chinesePassUsed {
+		body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 中文 Trending。\n\n## 今日热点", 1)
+	}
 	if o.DryRun {
 		_, err = io.WriteString(o.Out, body)
 		return err

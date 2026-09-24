@@ -15,12 +15,14 @@ func main() {
 	date := flag.String("date", "", "digest date in Asia/Shanghai (YYYY-MM-DD); defaults to today")
 	dryRun := flag.Bool("dry-run", false, "preview without writing GitHub issues or calling Jev/MiniMax")
 	retrySummaries := flag.Bool("retry-summaries", false, "add MiniMax explanations to today's completed private digest")
+	retryEmpty := flag.Bool("retry-empty", false, "search Chinese Trending once for today's completed empty digest")
 	flag.Parse()
 	if err := radar.Run(context.Background(), radar.Options{
 		ConfigPath:     *configPath,
 		Date:           *date,
 		DryRun:         *dryRun,
 		RetrySummaries: *retrySummaries,
+		RetryEmpty:     *retryEmpty,
 		Out:            os.Stdout,
 		GitHubToken:    os.Getenv("GITHUB_TOKEN"),
 		Repository:     os.Getenv("GITHUB_REPOSITORY"),

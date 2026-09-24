@@ -39,8 +39,8 @@ func (j *jevClient) evaluate(ctx context.Context, item Item, topics map[string]T
 			"source":      item.Source,
 		},
 		"questions": map[string]any{
-			"work":     map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone working on %v? Judge the subject even if its name is new. Answer no to unrelated hype or generic marketing.", topics[Work].Keywords)},
-			"learning": map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone learning or improving productivity around %v? Judge the subject even if its name is new. Answer no to unrelated hype or generic marketing.", topics[Life].Keywords)},
+			"work":     map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone working on %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Work].Keywords)},
+			"learning": map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone learning or improving productivity around %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Life].Keywords)},
 		},
 	}
 	b, err := json.Marshal(request)

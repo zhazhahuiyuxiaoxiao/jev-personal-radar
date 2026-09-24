@@ -70,6 +70,10 @@ func findNode(n *html.Node, predicate func(*html.Node) bool) *html.Node {
 }
 
 func parseTrendingHTML(r io.Reader, period string, now time.Time) ([]Item, error) {
+	return parseTrendingHTMLWithLanguage(r, period, now, "")
+}
+
+func parseTrendingHTMLWithLanguage(r io.Reader, period string, now time.Time, spokenLanguage string) ([]Item, error) {
 	root, err := html.Parse(r)
 	if err != nil {
 		return nil, fmt.Errorf("parse GitHub Trending: %w", err)
@@ -125,13 +129,21 @@ func parseTrendingHTML(r io.Reader, period string, now time.Time) ([]Item, error
 		if period == "weekly" {
 			window = "本周"
 		}
+		heatURL := "https://github.com/trending?since=" + period
+		source := "GitHub Trending"
+		listName := "GitHub " + window + "榜"
+		if spokenLanguage == "zh" {
+			heatURL += "&spoken_language_code=zh"
+			source += " 中文"
+			listName = "GitHub 中文" + window + "榜"
+		}
 		items = append(items, Item{
 			Title: parts[0] + "/" + parts[1], URL: "https://github.com/" + path,
 			Description: description, IsRepo: true, AllowMiniMax: true,
-			Source: "GitHub Trending", Published: now,
+			Source: source, Published: now,
 			HeatScore:    float64(trendingLimit-rank+1) / trendingLimit,
-			HeatEvidence: fmt.Sprintf("GitHub %s榜第 %d 名，%s新增 %d 星", window, rank, window, stars),
-			HeatURL:      "https://github.com/trending?since=" + period,
+			HeatEvidence: fmt.Sprintf("%s第 %d 名，%s新增 %d 星", listName, rank, window, stars),
+			HeatURL:      heatURL,
 		})
 	}
 	if len(items) == 0 {
@@ -141,10 +153,21 @@ func parseTrendingHTML(r io.Reader, period string, now time.Time) ([]Item, error
 }
 
 func fetchTrending(ctx context.Context, client *http.Client, period string, now time.Time) ([]Item, error) {
+	return fetchTrendingWithLanguage(ctx, client, period, now, "")
+}
+
+func fetchTrendingWithLanguage(ctx context.Context, client *http.Client, period string, now time.Time, spokenLanguage string) ([]Item, error) {
 	if period != "daily" && period != "weekly" {
 		return nil, errors.New("invalid trending period")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://github.com/trending?since="+period, nil)
+	if spokenLanguage != "" && spokenLanguage != "zh" {
+		return nil, errors.New("invalid trending spoken language")
+	}
+	endpoint := "https://github.com/trending?since=" + period
+	if spokenLanguage == "zh" {
+		endpoint += "&spoken_language_code=zh"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +187,7 @@ func fetchTrending(ctx context.Context, client *http.Client, period string, now 
 	if len(data) > 3<<20 {
 		return nil, errors.New("GitHub Trending page exceeds 3 MiB")
 	}
-	return parseTrendingHTML(strings.NewReader(string(data)), period, now)
+	return parseTrendingHTMLWithLanguage(strings.NewReader(string(data)), period, now, spokenLanguage)
 }
 
 type hnStory struct {

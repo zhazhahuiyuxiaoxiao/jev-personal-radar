@@ -374,12 +374,16 @@ func TestRunCreatesAndReusesPrivateDigest(t *testing.T) {
 	inbox := issue{Number: 10, Title: "[Radar Inbox] Go practice", Body: "### URL\nhttps://example.com/manual\n\n### Category\nwork\n\n### My note\nPrivate learning note", State: "open", CreatedAt: now}
 	jevCalls := 0
 	miniCalls := 0
+	chineseFetches := 0
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		path := req.URL.Path
 		switch {
 		case req.URL.Host == "github.com":
+			if req.URL.Query().Get("spoken_language_code") == "zh" {
+				chineseFetches++
+			}
 			return testResponse(200, testTrendingHTML("example/go-tool", "Go backend tool", "1,200", req.URL.Query().Get("since"))), nil
 		case path == "/v0/topstories.json":
 			return testResponse(200, `[123]`), nil
@@ -444,8 +448,8 @@ func TestRunCreatesAndReusesPrivateDigest(t *testing.T) {
 	if err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}
-	if jevCalls != 2 || miniCalls != 2 || old.State != "closed" || inbox.State != "closed" || !strings.Contains(digest.Body, "Private learning note") || !strings.Contains(digest.Body, "Jev launch") || !strings.Contains(digest.Body, "这是一个公开工具") || !strings.Contains(digest.Body, "第一步怎么试：先看官方文档") || !strings.Contains(digest.Body, "radar-status:complete") {
-		t.Fatalf("first run: Jev=%d MiniMax=%d old=%s inbox=%s digest=%s", jevCalls, miniCalls, old.State, inbox.State, digest.Body)
+	if jevCalls != 2 || miniCalls != 2 || chineseFetches != 0 || old.State != "closed" || inbox.State != "closed" || !strings.Contains(digest.Body, "Private learning note") || !strings.Contains(digest.Body, "Jev launch") || !strings.Contains(digest.Body, "这是一个公开工具") || !strings.Contains(digest.Body, "第一步怎么试：先看官方文档") || !strings.Contains(digest.Body, "radar-status:complete") {
+		t.Fatalf("first run: Jev=%d MiniMax=%d ChineseFetches=%d old=%s inbox=%s digest=%s", jevCalls, miniCalls, chineseFetches, old.State, inbox.State, digest.Body)
 	}
 	if err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
