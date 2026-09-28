@@ -120,6 +120,10 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 	body := renderDigest(now.Format("2006-01-02"), selected, result.Degraded, result.Failures, previousCalls+result.Calls, previousTokens+result.Tokens, summaryNote)
 	body = strings.Replace(body, "<!-- radar-status:complete -->", "<!-- radar-status:complete -->\n<!-- radar-project-pass:complete -->", 1)
 	body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 全栈项目（中文优先，核对 README 与近期增星）。\n\n## 今日热点", 1)
+	body, _, err = addSaveLinks(body, gh.repo, today.Number)
+	if err != nil {
+		return err
+	}
 	if err := gh.updateIssue(ctx, today.Number, body, ""); err != nil {
 		return fmt.Errorf("project retry completed but could not update Issue #%d: %w", today.Number, err)
 	}

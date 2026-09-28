@@ -16,13 +16,21 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "preview without writing GitHub issues or calling Jev/MiniMax")
 	retrySummaries := flag.Bool("retry-summaries", false, "add MiniMax explanations to today's completed private digest")
 	retryEmpty := flag.Bool("retry-empty", false, "search Chinese Trending once for today's completed empty digest")
+	backfillSaved := flag.Bool("backfill-saved", false, "preview saved links for existing private digests without model calls")
+	applyBackfill := flag.Bool("apply-backfill", false, "write saved links to existing private digests; requires -backfill-saved")
 	flag.Parse()
+	if *applyBackfill && !*backfillSaved {
+		fmt.Fprintln(os.Stderr, "radar: -apply-backfill requires -backfill-saved")
+		os.Exit(1)
+	}
 	if err := radar.Run(context.Background(), radar.Options{
 		ConfigPath:     *configPath,
 		Date:           *date,
 		DryRun:         *dryRun,
 		RetrySummaries: *retrySummaries,
 		RetryEmpty:     *retryEmpty,
+		BackfillSaved:  *backfillSaved,
+		ApplyBackfill:  *applyBackfill,
 		Out:            os.Stdout,
 		GitHubToken:    os.Getenv("GITHUB_TOKEN"),
 		Repository:     os.Getenv("GITHUB_REPOSITORY"),

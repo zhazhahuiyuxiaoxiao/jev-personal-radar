@@ -1,0 +1,37 @@
+name: Radar saved
+description: 从日报收藏一条热点，供自己稍后研究；提交后生成独立私有 Issue
+title: "[Radar Saved] "
+labels: ["radar-saved"]
+body:
+  - type: input
+    id: item_title
+    attributes:
+      label: 条目标题
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: 原文链接
+    validations:
+      required: true
+  - type: input
+    id: digest_url
+    attributes:
+      label: 所属日报
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 日报中的简要说明
+      description: 直接复制日报已有内容；可以在提交前修改。
+    validations:
+      required: false
+  - type: textarea
+    id: research_note
+    attributes:
+      label: 研究备注
+      description: 可选；研究完成后关闭这条 Issue。
+    validations:
+      required: false

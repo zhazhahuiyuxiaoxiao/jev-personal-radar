@@ -20,7 +20,7 @@ go run ./cmd/radar -config config.json -dry-run
 1. 把本程序放进你自己的公开 GitHub 仓库；另建一个私有仓库，复制 `runtime-template/` 中的 `config.example.json`、`.github/` 到私有仓库根目录。把配置文件重命名为 `config.json`，按自己兴趣修改。工作关键词可包含较宽的“AI API”“AI 开发工具”，让新名字也有机会被 Jev 判断。不要把真实配置、导入 Issue 或反馈 Issue 复制到公开仓库。已有私有运行仓库可沿用旧配置；其中旧 `github_queries`、`feeds` 不再为主日报提供候选。
 2. 编辑私有仓库 `.github/workflows/radar.yml`：把 `YOUR_GITHUB_USER/jev-personal-radar` 和 `PIN_PUBLIC_COMMIT_SHA` 换成公开仓库名、已审核的**完整 40 位 commit SHA**。公共代码升级时再手动更新 SHA；不要让私有工作流自动运行浮动的公开分支。
 3. 在私有仓库 Settings → Secrets and variables → Actions 添加 `TYPESAFE_API_KEY` 和 `MINIMAX_API_KEY` 两个 repository secrets。后者是在 MiniMax 开放平台创建的 Key；普通 API Key 走按量付费，订阅 Key 使用 Token Plan/积分，按你的账户资源选择。不要把 Key 写进配置、Issue、命令行参数或提交。工作流使用该仓库自带的 `GITHUB_TOKEN` 写 Issue，不需要另建 GitHub PAT，也不需要 Codex API Key。
-4. 先手动运行一次 workflow。程序会建立 `radar-digest`、`radar-inbox` 两个标签；之后可用私有仓库的“Radar inbox”Issue 表单粘贴小红书等链接和个人备注。私有运行仓库当前计划每天北京时间 09:17、10:17、11:17 触发；GitHub 定时任务可能延迟或偶尔不触发，不能当严格准点服务。
+4. 先手动运行一次 workflow。程序会建立 `radar-digest`、`radar-inbox`、`radar-saved` 三个标签；之后可用私有仓库的“Radar inbox”Issue 表单粘贴小红书等链接和个人备注。私有运行仓库当前计划每天北京时间 09:17、10:17、11:17 触发；GitHub 定时任务可能延迟或偶尔不触发，不能当严格准点服务。
 
 已有的已完成日报不会自动重写；升级后的新格式从下一份日报开始生效。若今天已经有一份**已完成但为空**、且尚未补查过的日报，可手动选择 `retry_empty`，仅补查一次 GitHub 公开全栈项目并原位更新当天 Issue；最多额外调用 30 次 Jev，可能产生费用。补查开始前会在 Issue 中留下标记，避免重复付费；旧版中文榜补查标记也会阻止重复执行。若中途失败，先检查 Actions 和 Issue 再处理。手动导入的链接仍不抓网页、不调用 MiniMax，只显示你填写的备注。
 
@@ -29,6 +29,10 @@ go run ./cmd/radar -config config.json -dry-run
 手动导入优先于自动候选，且不要求有热度证据。只要日报成功写入，已纳入的导入 Issue 就会关闭；未纳入的保留到后续运行。普通同日重跑不会再请求 Jev 或 MiniMax，只会尝试完成未关闭的导入/旧日报 Issue；`retry_empty` 和 `retry_summaries` 是需要显式选择的例外。如果首次运行在摘要阶段中断，普通重试会显示原始简介，不重复付费生成。日报保留历史，不自动删除。
 
 ## 私有反馈与人工调整
+
+每条日报热点都有“收藏”链接，打开私有仓库中预填的“Radar saved”表单。确认提交后才生成独立收藏 Issue；表单保存标题、原文链接、所属日报、日报已有说明，并可填写研究备注。日报的“查看我的收藏”显示 `radar-saved` 列表；打开的 Issue 表示待研究，研究完可手动关闭。重复提交会生成多条收藏，由你手动整理；收藏不自动提醒，也不参与推荐、去重或模型调用。
+
+历史日报可在本地运行 `-backfill-saved` 预览期数与条数，确认后加 `-apply-backfill` 写入。需要 `GITHUB_REPOSITORY` 与 `GITHUB_TOKEN`，只读取和更新私有日报 Issue，不调用 Jev 或 MiniMax；每条写入前会再次读取正文，发现期间有编辑便停止。重复运行不会重复插入链接。
 
 在**私有运行仓库**点 New issue → Radar feedback，每个条目记录一次“有用”“无关”或“遗漏”，可附日报日期与简短原因。遗漏可以写希望看到的主题或公开链接；不要填写公司内部资料。反馈 Issue 不会被日报程序读取、关闭或发送给 Jev，也不会自动改变推荐，暂时由你保留作为复盘依据。
 

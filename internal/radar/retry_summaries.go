@@ -128,6 +128,10 @@ func retrySummaries(ctx context.Context, gh *githubClient, client *http.Client, 
 	} else {
 		rebuilt[note] = fmt.Sprintf("今日已补生成 %d 条中文说明（本次 MiniMax %d 次请求）；另有 %d 条未生成：%s。", completed, requests, pending-completed, markdownText(strings.Join(problems, "、")))
 	}
+	updated, _, err := addSaveLinks(strings.Join(rebuilt, "\n"), gh.repo, today.Number)
+	if err != nil {
+		return err
+	}
 	latest, err := gh.getIssue(ctx, today.Number)
 	if err != nil {
 		return err
@@ -135,7 +139,7 @@ func retrySummaries(ctx context.Context, gh *githubClient, client *http.Client, 
 	if latest.Body != today.Body || latest.State != today.State {
 		return errors.New("today's digest changed during summary generation; no update was made")
 	}
-	if err := gh.updateIssue(ctx, today.Number, strings.Join(rebuilt, "\n"), ""); err != nil {
+	if err := gh.updateIssue(ctx, today.Number, updated, ""); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(out, "已为私有 Issue #%d 补生成 %d 条中文说明（MiniMax %d 次请求）。\n", today.Number, completed, requests)

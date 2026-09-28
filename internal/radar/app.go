@@ -18,6 +18,8 @@ type Options struct {
 	DryRun         bool
 	RetrySummaries bool
 	RetryEmpty     bool
+	BackfillSaved  bool
+	ApplyBackfill  bool
 	Out            io.Writer
 	GitHubToken    string
 	Repository     string
@@ -31,6 +33,12 @@ type Options struct {
 }
 
 func Run(ctx context.Context, o Options) error {
+	if o.BackfillSaved {
+		if o.RetrySummaries || o.RetryEmpty || o.ApplyBackfill && o.DryRun {
+			return errors.New("saved-link backfill cannot be combined with digest modes")
+		}
+		return backfillSaved(ctx, o)
+	}
 	if o.RetrySummaries && o.DryRun {
 		return errors.New("-retry-summaries cannot be combined with -dry-run")
 	}
@@ -90,6 +98,9 @@ func Run(ctx context.Context, o Options) error {
 				return err
 			}
 			if err := gh.ensureLabel(ctx, "radar-inbox", "1d76db"); err != nil {
+				return err
+			}
+			if err := gh.ensureLabel(ctx, "radar-saved", "fbca04"); err != nil {
 				return err
 			}
 		}
@@ -397,6 +408,10 @@ func Run(ctx context.Context, o Options) error {
 	}
 	if o.DryRun {
 		_, err = io.WriteString(o.Out, body)
+		return err
+	}
+	body, _, err = addSaveLinks(body, o.Repository, today.Number)
+	if err != nil {
 		return err
 	}
 	if err := gh.updateIssue(ctx, today.Number, body, ""); err != nil {
