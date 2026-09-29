@@ -30,6 +30,20 @@ type jevResult struct {
 }
 
 func (j *jevClient) evaluate(ctx context.Context, item Item, topics map[string]Topic) (jevResult, error) {
+	return j.evaluateQuestions(ctx, item, map[string]string{
+		"work":     fmt.Sprintf("Would this specific item help someone working on %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Work].Keywords),
+		"learning": fmt.Sprintf("Would this specific item help someone learning or improving productivity around %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Life].Keywords),
+	})
+}
+
+func (j *jevClient) evaluateFocus(ctx context.Context, item Item, want string) (jevResult, error) {
+	return j.evaluateQuestions(ctx, item, map[string]string{
+		"work":     "Does this newly created public repository match this requested capability: " + truncate(want, 160) + "? Judge only its public title and description. Answer no if it merely shares a word but does not provide the capability.",
+		"learning": "Does this repository offer a practical way to explore this requested capability: " + truncate(want, 160) + "? Judge only its public title and description. Answer no to unrelated or generic repositories.",
+	})
+}
+
+func (j *jevClient) evaluateQuestions(ctx context.Context, item Item, questions map[string]string) (jevResult, error) {
 	var result jevResult
 	request := map[string]any{
 		"model": jevModel,
@@ -39,8 +53,8 @@ func (j *jevClient) evaluate(ctx context.Context, item Item, topics map[string]T
 			"source":      item.Source,
 		},
 		"questions": map[string]any{
-			"work":     map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone working on %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Work].Keywords)},
-			"learning": map[string]any{"type": "noul", "instructions": fmt.Sprintf("Would this specific item help someone learning or improving productivity around %v? Also value substantive, runnable full-stack projects with frontend, backend, database and setup or deployment guidance, even without AI. Any programming language is acceptable; Go is not required. Judge only from the supplied public title and description. Answer no to unrelated hype or generic marketing.", topics[Life].Keywords)},
+			"work":     map[string]any{"type": "noul", "instructions": questions["work"]},
+			"learning": map[string]any{"type": "noul", "instructions": questions["learning"]},
 		},
 	}
 	b, err := json.Marshal(request)

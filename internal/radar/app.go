@@ -90,7 +90,7 @@ func Run(ctx context.Context, o Options) error {
 	if !o.DryRun && (gh == nil || o.GitHubToken == "") {
 		return errors.New("GITHUB_REPOSITORY and GITHUB_TOKEN are required for a real run")
 	}
-	var digests, inbox []issue
+	var digests, inbox, focusIssues, savedIssues []issue
 	var today *issue
 	if gh != nil && o.GitHubToken != "" {
 		if !o.DryRun && !o.RetrySummaries {
@@ -101,6 +101,12 @@ func Run(ctx context.Context, o Options) error {
 				return err
 			}
 			if err := gh.ensureLabel(ctx, "radar-saved", "fbca04"); err != nil {
+				return err
+			}
+			if err := gh.ensureLabel(ctx, "radar-focus", "7057ff"); err != nil {
+				return err
+			}
+			if err := gh.ensureLabel(ctx, "radar-feedback", "d4c5f9"); err != nil {
 				return err
 			}
 		}
@@ -118,6 +124,16 @@ func Run(ctx context.Context, o Options) error {
 			if digests[i].Title == digestTitle(date) {
 				today = &digests[i]
 				break
+			}
+		}
+		if !o.DryRun && !o.RetrySummaries && !o.RetryEmpty && today == nil {
+			focusIssues, err = gh.listIssues(ctx, "radar-focus", "open")
+			if err != nil {
+				return err
+			}
+			savedIssues, err = gh.listIssues(ctx, "radar-saved", "all")
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -140,7 +156,8 @@ func Run(ctx context.Context, o Options) error {
 		_, _ = fmt.Fprintf(o.Out, "今日 Issue #%d 已完成；dry-run 不更新。\n", today.Number)
 		return nil
 	}
-	allowJev := !o.DryRun && today == nil && o.JevKey != ""
+	newDigest := today == nil
+	allowJev := !o.DryRun && newDigest && o.JevKey != ""
 	allowSummary := !o.DryRun && today == nil && o.MiniMaxKey != ""
 	if !o.DryRun && today == nil {
 		created, err := gh.createIssue(ctx, digestTitle(date), "<!-- radar-status:running -->\n正在采集；如运行中断，重试会使用规则筛选并标明降级。", []string{"radar-digest"})
@@ -338,6 +355,15 @@ func Run(ctx context.Context, o Options) error {
 		failures = append(failures, append(projectFailures, result.Failures...)...)
 	}
 	selected := rankAndSelect(eligible)
+	var focus focusReport
+	if !o.DryRun && newDigest {
+		focus = runFocusSearch(ctx, gh, client, focusIssues, savedIssues, digests, selected, now, o.JevKey, o.JevURL)
+		selected = reserveFocusSlot(selected, focus.items)
+		jevcalls += focus.calls
+		tokens += focus.tokens
+	} else if !o.DryRun {
+		focus.lines = append(focus.lines, "- 本期为中断后的重试；搜索关注未完成，不重复发起可能计费的请求。")
+	}
 	summaryNote := "中文摘要仅依据公开来源，可能有误；重要事实请核对原文。"
 	if o.DryRun {
 		summaryNote = "预览不调用 MiniMax；下方显示来源原始简介。"
@@ -403,6 +429,9 @@ func Run(ctx context.Context, o Options) error {
 		}
 	}
 	body := renderDigest(date, selected, degraded, failures, jevcalls, tokens, summaryNote)
+	if !o.DryRun {
+		body = strings.Replace(body, "## 今日热点", formatFocusReport(focus)+"## 今日热点", 1)
+	}
 	if projectPassUsed {
 		body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 全栈项目（中文优先，核对 README 与近期增星）。\n\n## 今日热点", 1)
 	}

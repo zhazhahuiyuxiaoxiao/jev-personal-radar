@@ -3,6 +3,7 @@ package radar
 import (
 	"encoding/base64"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,9 @@ func TestAddSaveLinksNewAndManual(t *testing.T) {
 	if strings.Count(updated, "[收藏](<") != 2 || !strings.Contains(updated, "[查看我的收藏]") || !strings.Contains(updated, "我的备注：稍后研究") {
 		t.Fatal("manual item or saved list link missing")
 	}
+	if strings.Count(updated, "[反馈这条](<") != 2 || !strings.Contains(updated, "[记录遗漏](<") || !strings.Contains(updated, "[查看搜索关注](<") || !strings.Contains(updated, "[查看我的反馈](<") {
+		t.Fatal("feedback or focus entries missing")
+	}
 	again, _, err := addSaveLinks(updated, "owner/private", 42)
 	if err != nil || again != updated {
 		t.Fatal("repeated backfill changed the digest")
@@ -60,6 +64,11 @@ func TestAddSaveLinksOldAndEmpty(t *testing.T) {
 	}
 	if got := savedFields(t, updated).Get("description"); got != "入选原因：相关\n下一步：读原文" {
 		t.Fatalf("invented description: %q", got)
+	}
+	previous := regexp.MustCompile(`(?m)^   - \[反馈这条\].*\n`).ReplaceAllString(updated, "")
+	previous = regexp.MustCompile(`(?m)^\[查看我的收藏\].*\n`).ReplaceAllString(previous, "[查看我的收藏](<https://github.com/owner/private/issues?q=is%3Aissue+label%3Aradar-saved>)\n")
+	if err := validateFeedbackBackfillDiff(previous, updated); err != nil {
+		t.Fatalf("old digest diff changed content: %v", err)
 	}
 	empty := renderDigest("2026-09-28", nil, false, nil, 0, 0, "")
 	updated, count, err = addSaveLinks(empty, "owner/private", 43)

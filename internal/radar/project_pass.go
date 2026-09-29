@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-var digestJevUsage = regexp.MustCompile(`Jev：([0-9]+) 次请求，([0-9]+) 输入 token`)
+var digestJevUsage = regexp.MustCompile(`(?m)^Jev：([0-9]+) 次请求，([0-9]+) 输入 token`)
+var focusJevUsage = regexp.MustCompile(`重点搜索 Jev：([0-9]+) 次请求`)
 
 type secondPassResult struct {
 	Items    []Item
@@ -88,7 +89,14 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 		return errors.New("today's digest has no recognizable Jev usage")
 	}
 	previousCalls, err := strconv.Atoi(usage[1])
-	if err != nil || previousCalls < 0 || previousCalls > maxJevRequests {
+	focusCalls := 0
+	if focusUsage := focusJevUsage.FindStringSubmatch(today.Body); len(focusUsage) == 2 {
+		focusCalls, err = strconv.Atoi(focusUsage[1])
+		if err != nil || focusCalls < 0 || focusCalls > maxFocusJevRequests {
+			return errors.New("today's focus Jev usage is invalid")
+		}
+	}
+	if err != nil || previousCalls < focusCalls || previousCalls-focusCalls > maxJevRequests {
 		return errors.New("today's Jev usage exceeds the first-pass limit")
 	}
 	previousTokens, err := strconv.Atoi(usage[2])
@@ -120,6 +128,11 @@ func retryEmptyDigest(ctx context.Context, gh *githubClient, client *http.Client
 	body := renderDigest(now.Format("2006-01-02"), selected, result.Degraded, result.Failures, previousCalls+result.Calls, previousTokens+result.Tokens, summaryNote)
 	body = strings.Replace(body, "<!-- radar-status:complete -->", "<!-- radar-status:complete -->\n<!-- radar-project-pass:complete -->", 1)
 	body = strings.Replace(body, "## 今日热点", "首轮 0 条后，已补查 GitHub 全栈项目（中文优先，核对 README 与近期增星）。\n\n## 今日热点", 1)
+	if start := strings.Index(today.Body, "## 搜索关注\n\n"); start >= 0 {
+		if end := strings.Index(today.Body[start:], "## 今日热点"); end >= 0 {
+			body = strings.Replace(body, "## 今日热点", today.Body[start:start+end]+"## 今日热点", 1)
+		}
+	}
 	body, _, err = addSaveLinks(body, gh.repo, today.Number)
 	if err != nil {
 		return err

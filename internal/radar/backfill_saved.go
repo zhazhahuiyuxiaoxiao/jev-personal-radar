@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 )
 
@@ -45,8 +46,11 @@ func backfillSaved(ctx context.Context, o Options) error {
 			_, _ = fmt.Fprintf(out, "Issue #%d: unchanged (%d items)\n", entry.Number, count)
 			continue
 		}
+		if err := validateFeedbackBackfillDiff(entry.Body, updated); err != nil {
+			return fmt.Errorf("Issue #%d: %w", entry.Number, err)
+		}
 		changed++
-		_, _ = fmt.Fprintf(out, "Issue #%d: %d items, %d -> %d bytes\n", entry.Number, count, len(entry.Body), len(updated))
+		_, _ = fmt.Fprintf(out, "Issue #%d: %d items; - old navigation, + new navigation, + %d feedback links; all other body lines unchanged\n", entry.Number, count, count)
 		if !o.ApplyBackfill {
 			continue
 		}
@@ -62,5 +66,23 @@ func backfillSaved(ctx context.Context, o Options) error {
 		}
 	}
 	_, _ = fmt.Fprintf(out, "Complete: %d digests need changes, %d items; apply=%t\n", changed, total, o.ApplyBackfill)
+	return nil
+}
+
+func validateFeedbackBackfillDiff(before, after string) error {
+	strip := func(body string) string {
+		var kept []string
+		for _, line := range strings.Split(body, "\n") {
+			if strings.HasPrefix(line, "[查看我的收藏](<") || strings.HasPrefix(line, "   - [反馈这条](<") {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		body = strings.Join(kept, "\n")
+		return regexp.MustCompile(`(?m)^(# 个人信息雷达 · [^\n]+)\n{2,}`).ReplaceAllString(body, "$1\n\n")
+	}
+	if strip(before) != strip(after) {
+		return errors.New("feedback backfill changed content beyond navigation and feedback links")
+	}
 	return nil
 }
