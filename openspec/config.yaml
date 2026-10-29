@@ -1,0 +1,14 @@
+schema: spec-driven
+context: |
+  jev-personal-radar。Go 个人资讯筛选 CLI，聚合公开来源并可写入配置的 GitHub Issue；真实关注词、凭据和日报必须留在私有运行仓库。
+  当前基线为 main@13d7ec2d1f94e771f7ca599d58710d0877deda9c，核对日期 2026-10-29。
+  本次只补录文档；以源码和测试为准，不声称外部平台或生产验证通过。
+rules:
+  proposal:
+    - 写明问题、范围、验收标准与必须保持的行为；权限和数据语义变化需确认。
+  specs:
+    - 区分现状与期望；每项需求使用 SHALL 或 MUST，并提供 WHEN/THEN 场景和源码依据。
+  design:
+    - 沿用现有架构，说明失败路径、隐私边界和新增复杂度。
+  tasks:
+    - 将实现、针对性测试、文档同步与尚未验证的集成分开记录。
